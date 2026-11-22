@@ -35,6 +35,7 @@ jobs:
           repository: ${{ env.FIRMWARE_REPO }}
           ref: ${{ env.FIRMWARE_REF }}
           path: fw
+          submodules: recursive
 
       - name: Apply overlay (optional)
         run: |
