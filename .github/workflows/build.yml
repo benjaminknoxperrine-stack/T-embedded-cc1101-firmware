@@ -1,0 +1,154 @@
+name: Build and publish flasher
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+env:
+  # ---- EDIT THESE IF YOU WANT ----
+  FIRMWARE_REPO: BruceDevices/firmware   # change to your own fork later
+  FIRMWARE_REF: main
+  PIO_ENV: lilygo-t-embed-cc1101
+  FIRMWARE_NAME: My T-Embed Firmware
+  FIRMWARE_VERSION: "0.1.0"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout this repo (for optional overlay files)
+        uses: actions/checkout@v4
+
+      - name: Checkout firmware source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.FIRMWARE_REPO }}
+          ref: ${{ env.FIRMWARE_REF }}
+          path: fw
+
+      - name: Apply overlay (optional)
+        run: |
+          # Any files you put in an "overlay/" folder in your repo are copied
+          # over the firmware source (same relative paths), e.g.
+          # overlay/src/core/... to replace a file.
+          if [ -d overlay ]; then
+            cp -rv overlay/. fw/
+          else
+            echo "No overlay folder, building stock source."
+          fi
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache/pip
+          key: pio-${{ env.PIO_ENV }}-${{ hashFiles('fw/platformio.ini') }}
+
+      - name: Install tools
+        run: pip install platformio esptool
+
+      - name: Show available environments
+        working-directory: fw
+        run: |
+          pio project config | grep -E "^\[env:|^env:" || true
+          pio project config | grep -i "t-embed" || true
+
+      - name: Build
+        working-directory: fw
+        run: pio run -e "$PIO_ENV"
+
+      - name: Merge into a single flashable image
+        run: |
+          B="fw/.pio/build/$PIO_ENV"
+          BOOT_APP0=$(find ~/.platformio/packages -name boot_app0.bin | head -n1)
+          ls -la "$B"
+          echo "boot_app0: $BOOT_APP0"
+          mkdir -p site
+          esptool.py --chip esp32s3 merge_bin -o site/firmware-merged.bin \
+            --flash_mode keep --flash_size keep \
+            0x0     "$B/bootloader.bin" \
+            0x8000  "$B/partitions.bin" \
+            0xe000  "$BOOT_APP0" \
+            0x10000 "$B/firmware.bin"
+          ls -la site
+
+      - name: Generate flasher page
+        run: |
+          cat > site/manifest.json <<EOF
+          {
+            "name": "$FIRMWARE_NAME",
+            "version": "$FIRMWARE_VERSION",
+            "new_install_prompt_erase": true,
+            "builds": [
+              {
+                "chipFamily": "ESP32-S3",
+                "parts": [ { "path": "firmware-merged.bin", "offset": 0 } ]
+              }
+            ]
+          }
+          EOF
+
+          cat > site/index.html <<EOF
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>$FIRMWARE_NAME Flasher</title>
+            <script type="module" src="https://unpkg.com/esp-web-tools@10.0.1/dist/web/install-button.js?module"></script>
+            <style>
+              body{font-family:system-ui,sans-serif;background:#12091f;color:#eee;max-width:640px;margin:40px auto;padding:0 16px;text-align:center}
+              h1{color:#b46bff}
+              li{text-align:left;margin:6px 0}
+              button{background:#b46bff;color:#12091f;border:0;border-radius:8px;padding:14px 28px;font-size:18px;font-weight:700;cursor:pointer}
+            </style>
+          </head>
+          <body>
+            <h1>$FIRMWARE_NAME</h1>
+            <p>Version $FIRMWARE_VERSION for LilyGO T-Embed CC1101</p>
+            <esp-web-install-button manifest="manifest.json">
+              <button slot="activate">Flash firmware</button>
+              <span slot="unsupported">Use Chrome or Edge on desktop.</span>
+              <span slot="not-allowed">This page must be opened over HTTPS.</span>
+            </esp-web-install-button>
+            <h3>If it can't connect</h3>
+            <ol>
+              <li>Hold the encoder center button.</li>
+              <li>Press the RST button (on the board, beside the ESP32-S3 chip).</li>
+              <li>Release, then click Flash and pick the device.</li>
+            </ol>
+            <p>Linux: <code>sudo setfacl -m u::rw /dev/ttyACM0</code></p>
+          </body>
+          </html>
+          EOF
+          # strip the leading indentation the heredoc inherited from YAML
+          sed -i 's/^          //' site/manifest.json site/index.html
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
