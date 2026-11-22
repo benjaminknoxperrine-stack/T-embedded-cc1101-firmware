@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{NAME}} Flasher</title>
+<script type="module" src="https://unpkg.com/esp-web-tools@10.0.1/dist/web/install-button.js?module"></script>
+<style>
+  :root{
+    --bg:#12091f; --panel:#1d1233; --accent:#b46bff; --accent2:#4ee3d4;
+    --text:#eee; --muted:#9c8fb8;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(ellipse at top,#2a1450,var(--bg) 60%);color:var(--text);
+       font-family:system-ui,-apple-system,Segoe UI,sans-serif;min-height:100vh}
+  main{max-width:720px;margin:0 auto;padding:32px 16px 64px;text-align:center}
+  h1{margin:0 0 4px;color:var(--accent);font-size:2rem}
+  .sub{color:var(--muted);margin:0 0 28px}
+
+  /* ---- device ---- */
+  .device{background:linear-gradient(160deg,#2b2b36,#15151c);border-radius:28px;padding:22px;
+          box-shadow:0 20px 60px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.08);
+          display:flex;gap:18px;align-items:center;max-width:640px;margin:0 auto}
+  .screen-wrap{flex:1;min-width:0}
+  .screen{container-type:inline-size;aspect-ratio:320/170;background:#000;border-radius:8px;
+          border:3px solid #0a0a0f;overflow:hidden;position:relative;font-family:ui-monospace,Menlo,Consolas,monospace}
+  .bar{display:flex;justify-content:space-between;align-items:center;padding:1.6cqw 3cqw;
+       background:var(--accent);color:#12091f;font-weight:700;font-size:5.2cqw}
+  .list{padding:1.5cqw 0}
+  .row{display:flex;align-items:center;gap:3cqw;padding:1.3cqw 4cqw;font-size:6cqw;color:#cdbfe8}
+  .row.sel{background:#2d1b52;color:#fff;border-left:1.2cqw solid var(--accent2);padding-left:2.8cqw}
+  .row .ic{width:7cqw;text-align:center}
+  .hint{position:absolute;bottom:1.2cqw;right:3cqw;font-size:3.6cqw;color:#6f6290}
+
+  /* ---- encoder ---- */
+  .encoder{display:flex;flex-direction:column;align-items:center;gap:10px}
+  .knob{width:84px;height:84px;border-radius:50%;border:0;cursor:pointer;
+        background:radial-gradient(circle at 35% 30%,#555,#1b1b22);
+        box-shadow:0 6px 14px rgba(0,0,0,.6),inset 0 2px 3px rgba(255,255,255,.15);
+        color:#bbb;font-size:12px;transition:transform .12s}
+  .knob:active{transform:scale(.94)}
+  .pair{display:flex;gap:8px}
+  .pair button{background:#2a2a35;border:0;color:#ddd;border-radius:8px;padding:6px 12px;cursor:pointer;font-size:16px}
+  .pair button:active{background:var(--accent);color:#12091f}
+
+  .note{color:var(--muted);font-size:.85rem;margin:14px 0 36px}
+
+  /* ---- flash ---- */
+  .flash{background:var(--panel);border-radius:16px;padding:24px;margin-top:8px}
+  .flash button{background:var(--accent);color:#12091f;border:0;border-radius:10px;
+                padding:14px 30px;font-size:18px;font-weight:800;cursor:pointer}
+  .flash ol{text-align:left;max-width:460px;margin:16px auto 0;color:#cdbfe8}
+  .flash li{margin:6px 0}
+  code{background:#000;padding:2px 6px;border-radius:4px}
+  @media (max-width:520px){ .device{flex-direction:column} }
+</style>
+</head>
+<body>
+<main>
+  <h1>{{NAME}}</h1>
+  <p class="sub">Version {{VERSION}} for LilyGO T-Embed CC1101</p>
+
+  <div class="device">
+    <div class="screen-wrap">
+      <div class="screen" id="screen" tabindex="0" aria-label="Firmware screen preview">
+        <div class="bar"><span id="title">Main Menu</span><span>▮▮▮▯ 87%</span></div>
+        <div class="list" id="list"></div>
+        <div class="hint" id="hint">scroll • click</div>
+      </div>
+    </div>
+    <div class="encoder">
+      <button class="knob" id="press" aria-label="Press encoder">PRESS</button>
+      <div class="pair">
+        <button id="left" aria-label="Rotate left">⟲</button>
+        <button id="right" aria-label="Rotate right">⟳</button>
+      </div>
+    </div>
+  </div>
+  <p class="note">Preview only: scroll the mouse wheel over the screen, use ↑ ↓ Enter / Esc, or use the dial buttons.</p>
+
+  <div class="flash">
+    <esp-web-install-button manifest="manifest.json">
+      <button slot="activate">Flash firmware</button>
+      <span slot="unsupported">Use Chrome or Edge on a desktop computer.</span>
+      <span slot="not-allowed">This page must be opened over HTTPS.</span>
+    </esp-web-install-button>
+    <ol>
+      <li>Plug the T-Embed into your computer with USB.</li>
+      <li>Click <b>Flash firmware</b> and pick the device.</li>
+      <li>If it can’t connect: hold the encoder center button, press <b>RST</b> (beside the ESP32-S3 chip), release, and try again.</li>
+      <li>Linux only: <code>sudo setfacl -m u::rw /dev/ttyACM0</code></li>
+    </ol>
+  </div>
+</main>
+
+<script>
+/* ===== EDIT THIS to match your firmware ===== */
+const MENU = {
+  title: "Main Menu",
+  items: [
+    { icon: "📶", label: "WiFi",   sub: ["Scan Networks", "Connect", "Web UI", "Config"] },
+    { icon: "🔵", label: "BLE",    sub: ["Scan Devices", "BLE Keyboard", "Config"] },
+    { icon: "📡", label: "RF",     sub: ["Scan / Copy", "Replay", "Spectrum", "Custom SubGHz"] },
+    { icon: "💳", label: "RFID",   sub: ["Read Tag", "Write Tag", "Saved Tags"] },
+    { icon: "🔆", label: "IR",     sub: ["TV-B-Gone", "Custom IR", "Read Signal"] },
+    { icon: "📁", label: "Files",  sub: ["SD Card", "LittleFS"] },
+    { icon: "⚙️", label: "Config", sub: ["Brightness", "Theme", "Sound", "About"] }
+  ]
+};
+/* ============================================ */
+
+const listEl = document.getElementById("list");
+const titleEl = document.getElementById("title");
+const hintEl = document.getElementById("hint");
+let stack = [{ title: MENU.title, rows: MENU.items, index: 0 }];
+
+function render(){
+  const lvl = stack[stack.length - 1];
+  titleEl.textContent = lvl.title;
+  hintEl.textContent = stack.length > 1 ? "click = select • esc = back" : "scroll • click";
+  const show = 5;
+  let start = Math.max(0, Math.min(lvl.index - 2, lvl.rows.length - show));
+  listEl.innerHTML = "";
+  lvl.rows.slice(start, start + show).forEach((r, i) => {
+    const idx = start + i;
+    const d = document.createElement("div");
+    d.className = "row" + (idx === lvl.index ? " sel" : "");
+    const label = typeof r === "string" ? r : r.label;
+    const icon = typeof r === "string" ? "›" : r.icon;
+    d.innerHTML = '<span class="ic">' + icon + '</span><span></span>';
+    d.lastChild.textContent = label;
+    d.onclick = () => { lvl.index = idx; render(); press(); };
+    listEl.appendChild(d);
+  });
+}
+function move(dir){
+  const lvl = stack[stack.length - 1];
+  lvl.index = (lvl.index + dir + lvl.rows.length) % lvl.rows.length;
+  render();
+}
+function press(){
+  const lvl = stack[stack.length - 1];
+  const item = lvl.rows[lvl.index];
+  if (typeof item !== "string" && item.sub){
+    stack.push({ title: item.label, rows: item.sub, index: 0 });
+  } else if (typeof item === "string"){
+    hintEl.textContent = "▶ " + item;
+    return;
+  }
+  render();
+}
+function back(){ if (stack.length > 1){ stack.pop(); render(); } }
+
+document.getElementById("left").onclick  = () => move(-1);
+document.getElementById("right").onclick = () => move(1);
+document.getElementById("press").onclick = press;
+document.getElementById("screen").addEventListener("wheel", e => {
+  e.preventDefault(); move(e.deltaY > 0 ? 1 : -1);
+}, { passive: false });
+window.addEventListener("keydown", e => {
+  if (e.key === "ArrowDown") { e.preventDefault(); move(1); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); move(-1); }
+  else if (e.key === "Enter" && document.activeElement.tagName !== "BUTTON") press();
+  else if (e.key === "Escape" || e.key === "Backspace") back();
+});
+render();
+</script>
+</body>
+</html>
